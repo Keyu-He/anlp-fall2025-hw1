@@ -43,8 +43,11 @@ class LayerNorm(torch.nn.Module):
             torch.Tensor: The normalized tensor.
         """
         # todo
-        raise NotImplementedError
-
+        mean = x.mean(dim=-1, keepdim=True)
+        variance = x.var(dim=-1, keepdim=True, unbiased=False)
+        return (x - mean) / torch.sqrt(variance + self.eps)
+        
+        
     def forward(self, x):
         """
         Apply layer normalization.
@@ -94,7 +97,12 @@ class Attention(nn.Module):
         attention matrix before applying it to the value tensor.
         '''
         # todo
-        raise NotImplementedError
+        d_k = query.size(-1)
+        scores = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)
+        attn = F.softmax(scores, dim=-1)
+        attn = self.attn_dropout(attn)
+        output = torch.matmul(attn, value)
+        return output
 
     def forward(
         self,
@@ -197,7 +205,19 @@ class LlamaLayer(nn.Module):
            output of the feed-forward network
         '''
         # todo
-        raise NotImplementedError
+        # 1)
+        x_norm1 = self.attention_norm(x)
+        # 2)
+        attn_out = self.attention(x_norm1)
+        # 3) 3.1....
+        x_res1 = x + attn_out
+        # 3) 3.2....
+        x_norm2 = self.ffn_norm(x_res1)
+        # 4)
+        ffn_out = self.feed_forward(x_norm2)
+        # 5)
+        output = x_res1 + ffn_out
+        return output
 
 class Llama(LlamaPreTrainedModel):
     def __init__(self, config: LlamaConfig):
@@ -274,11 +294,9 @@ class Llama(LlamaPreTrainedModel):
             logits, _ = self(idx_cond)
             logits = logits[:, -1, :] # crop to just the final time step
             # todo
-            raise NotImplementedError
-            
             if temperature == 0.0:
                 # select the single most likely index
-                idx_next = None
+                idx_next = torch.argmax(logits, dim=-1, keepdim=True)
             else:
                 '''
                 Perform temperature sampling with epsilon sampling:
@@ -288,7 +306,11 @@ class Llama(LlamaPreTrainedModel):
                 4) Renormalize the filtered probabilities so they sum to 1.
                 5) Sample from this filtered probability distribution.
                 '''
-                idx_next = None
+                probs = F.softmax(logits / temperature, dim=-1)
+                mask = probs >= epsilon
+                filtered_probs = probs * mask
+                filtered_probs = filtered_probs / filtered_probs.sum(dim=-1, keepdim=True)
+                idx_next = torch.multinomial(filtered_probs, num_samples=1)
             # append sampled index to the running sequence and continue
             idx = torch.cat((idx, idx_next), dim=1)
         

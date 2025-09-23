@@ -63,13 +63,30 @@ def apply_rotary_emb(
 
     # First, compute the trigonometric values in the second and fourth columns in
     # slide 49 (linked above).
+    freqs = theta ** (torch.arange(0, -head_dim, -2, device=device).float() / head_dim)
+
+    # Position indices m in the sequence
+    m = torch.arange(seqlen, device=device).float()
+
+    # Compute m * theta^(-2i/d) for all positions
+    angles = torch.outer(m, freqs)
+
+    # Create complex exponentials e^(i*angle) = cos(angle) + i*sin(angle)
+    freqs_cis = torch.complex(torch.cos(angles), torch.sin(angles))
 
     # Then, combine these trigonometric values with the tensors query_real, query_imag,
     # key_real, and key_imag.
+    freqs_cis = reshape_for_broadcast(freqs_cis, query_real)
 
-    raise NotImplementedError
+    # Apply rotation using complex multiplication
+    query_complex = torch.complex(query_real, query_imag)
+    key_complex = torch.complex(key_real, key_imag)
 
-    query_out = None
-    key_out = None
+    query_out_complex = query_complex * freqs_cis
+    key_out_complex = key_complex * freqs_cis
+
+    # Convert back to real representation
+    query_out = torch.stack([query_out_complex.real, query_out_complex.imag], dim=-1).flatten(-2)
+    key_out = torch.stack([key_out_complex.real, key_out_complex.imag], dim=-1).flatten(-2)
     # Return the rotary position embeddings for the query and key tensors
     return query_out, key_out
