@@ -17,6 +17,10 @@ with torch.no_grad():
     logits, hidden_states = llama(sent_ids)
     # assert torch.allclose(logits, sanity_data["logits"], atol=1e-5, rtol=1e-3)
     # assert torch.allclose(hidden_states, sanity_data["hidden_states"], atol=1e-5, rtol=1e-3)
+    
+    # Changing to a bit looser tolerance since different pytorch versions might have small numerical differences
+    # I also tried running using Intel CPU, which turned out to have smaller numerical differences 
+    # and can pass the original stricter sanity check.
     assert torch.allclose( logits, sanity_data["logits"], atol=5e-4, rtol=1e-3 ) 
     assert torch.allclose( hidden_states, sanity_data["hidden_states"], atol=5e-4, rtol=1e-3 )
     print("Your Llama implementation is correct!")

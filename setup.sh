@@ -7,7 +7,10 @@ conda activate llama_hw
 # As written, this command assumes you have CUDA on your machine, but
 # refer to https://pytorch.org/get-started/previous-versions/ for the correct
 # command for your system.
-conda install pytorch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 pytorch-cuda=11.8 -c pytorch -c nvidia
+# conda install pytorch==2.1.2 torchvision==0.16.2 torchaudio==2.1.2 pytorch-cuda=11.8 -c pytorch -c nvidia
+
+# using mac system, and pytorch >= 2.3 supports rope on mps. So we use pytorch 2.4
+conda install pytorch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0 -c pytorch
 pip install tqdm==4.66.1
 pip install requests==2.31.0
 pip install importlib-metadata==3.7.0

@@ -1,3 +1,4 @@
 __pycache__/
-stories42M.pt
-stories42M.pt.1
+.*
+*.pt
+*.zip

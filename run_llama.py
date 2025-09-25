@@ -19,6 +19,19 @@ from lora import apply_lora, count_lora_parameters, get_lora_optimizer_params, m
 
 
 TQDM_DISABLE=False
+
+# return the device given the use_gpu flag
+# I added this function to support mac
+def get_device(use_gpu: bool):
+	if use_gpu:
+		if torch.backends.mps.is_available():
+			device = torch.device('mps')
+		else:
+			device = torch.device('cuda')
+	else:
+		device = torch.device('cpu')
+	return device
+
 # fix the random seed
 def seed_everything(seed=11711):
 	random.seed(seed)
@@ -150,7 +163,9 @@ def save_lora_model(model, optimizer, args, config, filepath, merge_weights=True
 
 
 def train(args):
-	device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+	# device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+	device = get_device(args.use_gpu)
+ 
 	#### Load data
 	# create the data and its corresponding datasets and dataloader
 	tokenizer = Tokenizer(args.max_sentence_len)
@@ -217,7 +232,8 @@ def train(args):
 
 def train_lora(args):
 	"""Train with LoRA fine-tuning."""
-	device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+	# device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+	device = get_device(args.use_gpu)
 	
 	#### Load data
 	tokenizer = Tokenizer(args.max_sentence_len)
@@ -297,8 +313,21 @@ def train_lora(args):
 
 def generate_sentence(args, prefix, outfile, max_new_tokens = 75, temperature = 0.0):
 	with torch.no_grad():
-		device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
-		ctx = torch.amp.autocast(device_type="cuda", dtype=torch.float32) if args.use_gpu else nullcontext()
+		# device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+		device = get_device(args.use_gpu)
+		# ctx = torch.amp.autocast(device_type="cuda", dtype=torch.float32) if args.use_gpu else nullcontext()
+		if args.use_gpu and device.type == 'cuda':
+			ctx = torch.amp.autocast(device_type="cuda", dtype=(torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16))
+		elif args.use_gpu and device.type == 'mps':
+			# autocast on MPS is available in recent PyTorch; fall back if not
+			try:
+				ctx = torch.autocast(device_type="mps", dtype=torch.float16)
+			except Exception:
+				print("Note: Your PyTorch version does not support autocast on MPS. Proceeding without it.")
+				ctx = nullcontext()
+		else:
+			ctx = nullcontext()
+  
 		llama = load_pretrained(args.pretrained_model_path)
 		llama = llama.to(device)
 		print(f"load model from {args.pretrained_model_path}")
@@ -331,8 +360,9 @@ def test_with_prompting(args):
 	assert args.test_out.endswith("test-prompting-output.txt"), 'For saving prompting results, please set the test_out argument as "<dataset>-test-prompting-output.txt"'
 
 	with torch.no_grad():
-
-		device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+		# device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+		device = get_device(args.use_gpu)
+  
 		#### Load data
 		# create the data and its corresponding datasets and dataloader
 		tokenizer = Tokenizer(args.max_sentence_len)
@@ -377,7 +407,9 @@ def test(args):
         'For saving results, please set the test_out argument as "<dataset>-test-finetuning-output.txt" or "<dataset>-test-lora-output.txt"'
     
     with torch.no_grad():
-        device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+        # device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+        device = get_device(args.use_gpu)
+        
         saved = torch.load(args.filepath)
         config = saved['model_config']
         model = LlamaEmbeddingClassifier(config)
