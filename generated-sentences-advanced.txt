@@ -1,0 +1,34 @@
+==== Vanilla (temp=0.0) ====
+I have wanted to see this thriller for a while, and it didn't disappoint. Keanu Reeves, playing the hero John Wick, is this day. He was playing with his toy car, driving it around the living room. Suddenly, he heard a loud crash. He had broken the car and was very sad. He knew he had done something wrong. He had to be punished. He had to stay in his room all day. He was very sorry and promised to never do it again
+
+==== Vanilla (temp=1.0) ====
+I have wanted to see this thriller for a while, and it didn't disappoint. Keanu Reeves, playing the hero John Wick, is the brave girl. He was always kind to her.
+One day John was in his backyard playing. He saw her and said "John Re passed me." He said "I'm a hero". He was so happy. He said "I am a hero".
+One day, he was walking and he saw a little girl. She was lost. He was
+
+==== Top-k = 50 (temp=0.0) ====
+I have wanted to see this thriller for a while, and it didn't disappoint. Keanu Reeves, playing the hero John Wick, is this day. He was playing with his toy car, driving it around the living room. Suddenly, he heard a loud crash. He had broken the car and was very sad. He knew he had done something wrong. He had to be punished. He had to stay in his room all day. He was very sorry and promised to never do it again
+
+==== Top-k = 50 (temp=1.0) ====
+I have wanted to see this thriller for a while, and it didn't disappoint. Keanu Reeves, playing the hero John Wick, is the brave girl. He was always kind to her.
+One day John was in his backyard playing. He saw her and ran towards her. She was so excited and happy.
+John said, "Lets play!"
+Little did John know what the surprise was. She was a real hero and a hero! Once upon a time, there was a
+
+==== Top-p = 0.95 (temp=0.0) ====
+I have wanted to see this thriller for a while, and it didn't disappoint. Keanu Reeves, playing the hero John Wick, is this day. He was playing with his toy car, driving it around the living room. Suddenly, he heard a loud crash. He had broken the car and was very sad. He knew he had done something wrong. He had to be punished. He had to stay in his room all day. He was very sorry and promised to never do it again
+
+==== Top-p = 0.95 (temp=1.0) ====
+I have wanted to see this thriller for a while, and it didn't disappoint. Keanu Reeves, playing the hero John Wick, is the brave girl. He was always getting into trouble.
+One day John was in his backyard playing. He had stolen a pizza!umb John felt guilty and knew he had to return the pizza by his act. John returned the pizza and apologized for what he had done.
+John and John did not have any money for dinner that night.
+
+==== Beam search (beam_size=5, alpha=0.7, temp=0.0) ====
+I have wanted to see this thriller for a while, and it didn't disappoint. Keanu Reeves, playing the hero John Wick, is this day. He was playing with his toy car, driving it around the living room. Suddenly, he heard a loud crash. He had broken the car and was very sad. He knew he had done something wrong. He had to be punished. He had to stay in his room all day. He was very sorry and promised to never do it again
+
+==== Beam search (beam_size=5, alpha=0.7, temp=1.0) ====
+I have wanted to see this thriller for a while, and it didn't disappoint. Keanu Reeves, playing the hero John Wick, is there too. He loves to play with his toys.
+One day, John's mom asked him, "John, do you want to play with me?"
+John's mom smiled and said, "Yes!"
+John's mom said, "Let's play!"
+John's mom smiled and said, "Let's play!"

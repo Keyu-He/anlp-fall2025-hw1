@@ -10,29 +10,29 @@
 - [x] **rope.py**
 - [x] **optimizer.py**
 - [x] **classifier.py**
-- [ ] **lora.py**
+- [x] **lora.py**
 
 ### Testing & Validation
 - [x] Pass `python sanity_check.py`
 - [x] Pass `python optimizer_test.py` 
 - [x] Pass `python rope_test.py` 
 - [x] Generate coherent text with `python run_llama.py --option generate`
-- [ ] Complete SST zero-shot prompting
-- [ ] Complete CFIMDB zero-shot prompting  
-- [ ] Complete SST fine-tuning
-- [ ] Complete CFIMDB fine-tuning
-- [ ] Complete SST LoRA fine-tuning
-- [ ] Complete CFIMDB LoRA fine-tuning
+- [x] Complete SST zero-shot prompting
+- [x] Complete CFIMDB zero-shot prompting  
+- [x] Complete SST fine-tuning
+- [x] Complete CFIMDB fine-tuning
+- [x] Complete SST LoRA fine-tuning
+- [x] Complete CFIMDB LoRA fine-tuning
 
 ### Advanced Features (Optional - A+)
-- [ ] Other advanced techniques (see A+ options above)
-- [ ] Write 1-2 page report documenting improvements
+- [x] Other advanced techniques (see A+ options above)
+- [x] Write 1-2 page report documenting improvements
 
 ### Submission Preparation
-- [ ] Generate all required output files
-- [ ] Validate submission with `python3 prepare_submit.py`
-- [ ] Verify file size < 10MB
-- [ ] Create zip file with proper ANDREWID structure
-- [ ] Include optional report and feedback files
-- [ ] Final submission check before Canvas upload
+- [x] Generate all required output files
+- [x] Validate submission with `python3 prepare_submit.py`
+- [x] Verify file size < 10MB
+- [x] Create zip file with proper ANDREWID structure
+- [x] Include optional report and feedback files
+- [x] Final submission check before Canvas upload
   

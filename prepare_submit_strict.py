@@ -38,6 +38,7 @@ REQUIRED_FILES: Set[str] = {
     "cfimdb-dev-lora-output.txt",
     "cfimdb-test-lora-output.txt",
     "setup.sh",
+    "run_all_experiments.sh",
 }
 
 OPTIONAL_FILES: Set[str] = {
@@ -45,6 +46,8 @@ OPTIONAL_FILES: Set[str] = {
     "sst-test-advanced-output.txt",
     "cfimdb-dev-advanced-output.txt",
     "cfimdb-test-advanced-output.txt",
+    "generated-sentences-advanced.txt",
+    "keyuh.pdf",
     "feedback.txt",
 }
 

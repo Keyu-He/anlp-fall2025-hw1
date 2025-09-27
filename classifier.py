@@ -18,11 +18,14 @@ class LlamaZeroShotClassifier(torch.nn.Module):
 		assert len(label_names) == self.num_labels
 		self.tokenizer = tokenizer
 		self.label_name_ids = [tokenizer.encode(label, bos=False, eos=False) for label in label_names]
+		self.use_pad_mask = getattr(config, 'use_pad_mask', False)
+		self.pad_id = tokenizer.pad_id
 
 
 	def forward(self, input_ids):
 		# compute the completion probability of each label string
-		logits, _ = self.llama(input_ids)
+		attn_mask = input_ids.ne(self.pad_id).long() if self.use_pad_mask else None
+		logits, _ = self.llama(input_ids, attention_mask=attn_mask)
 		log_probabilities = F.log_softmax(logits, dim=-1)
 		label_probabilities = torch.zeros((log_probabilities.shape[0], self.num_labels), device=log_probabilities.device)
 		for i, label_token_ids in enumerate(self.label_name_ids):
@@ -44,6 +47,8 @@ class LlamaEmbeddingClassifier(torch.nn.Module):
 
 		self.dropout = torch.nn.Dropout(config.hidden_dropout_prob)
 		self.classifier_head = torch.nn.Linear(self.llama.config.dim, self.num_labels)
+		self.use_pad_mask = getattr(config, 'use_pad_mask', False)
+		self.pad_id = Tokenizer().pad_id if not hasattr(self, 'pad_id') else self.pad_id
 
 	def forward(self, input_ids):
 		'''
@@ -55,8 +60,15 @@ class LlamaEmbeddingClassifier(torch.nn.Module):
 		3) Take the log-softmax of the logits and return log-probabilities over all classes.
 		'''
 		# todo
-		logits, hidden_states = self.llama(input_ids)
-		last_token_hidden_states = hidden_states[torch.arange(hidden_states.size(0)), input_ids.ne(0).sum(1) - 1]
+		attn_mask = input_ids.ne(self.pad_id).long() if self.use_pad_mask else None
+		logits, hidden_states = self.llama(input_ids, attention_mask=attn_mask)
+		# pick last non-pad token
+		if self.use_pad_mask:
+			lengths = attn_mask.sum(1)
+			last_idx = lengths - 1
+		else:
+			last_idx = input_ids.ne(0).sum(1) - 1
+		last_token_hidden_states = hidden_states[torch.arange(hidden_states.size(0)), last_idx]
 		if self.training:
 			last_token_hidden_states = self.dropout(last_token_hidden_states)
 		logits = self.classifier_head(last_token_hidden_states)

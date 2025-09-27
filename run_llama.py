@@ -185,7 +185,8 @@ def train(args):
 			  'pretrained_model_path': args.pretrained_model_path,
 			  'num_labels': num_labels,
 			  'data_dir': '.',
-			  'option': args.option}
+			  'option': args.option,
+			  'use_pad_mask': args.use_pad_mask}
 
 	config = SimpleNamespace(**config)
 
@@ -253,7 +254,8 @@ def train_lora(args):
 			  'pretrained_model_path': args.pretrained_model_path,
 			  'num_labels': num_labels,
 			  'data_dir': '.',
-			  'option': 'finetune'}  # Set to finetune so LoRA params can be trained
+			  'option': 'finetune',  # Set to finetune so LoRA params can be trained
+			  'use_pad_mask': args.use_pad_mask}
 
 	config = SimpleNamespace(**config)
 
@@ -339,7 +341,16 @@ def generate_sentence(args, prefix, outfile, max_new_tokens = 75, temperature = 
 		# run generation
 		with torch.no_grad():
 			with ctx:
-				y = llama.generate(x, max_new_tokens, temperature=temperature)
+				y = llama.generate(
+					x,
+					max_new_tokens,
+					temperature=temperature,
+					epsilon=0.05,
+					top_k=args.top_k,
+					top_p=args.top_p,
+					beam_size=args.beam_size,
+					beam_alpha=args.beam_alpha,
+				)
 				sentence = enc.decode(y[0].tolist())
 				print(f"Temperature is {temperature}")
 				print(sentence)
@@ -356,8 +367,17 @@ def write_predictions_to_file(split: str, outfile: str, acc: float, pred: list[s
 			f.write(f"{p} ||| {s}\n")
 
 def test_with_prompting(args):
-	assert args.dev_out.endswith("dev-prompting-output.txt"), 'For saving prompting results, please set the dev_out argument as "<dataset>-dev-prompting-output.txt"'
-	assert args.test_out.endswith("test-prompting-output.txt"), 'For saving prompting results, please set the test_out argument as "<dataset>-test-prompting-output.txt"'
+	# Allow distinct filenames based on whether advanced masking is enabled
+	if args.use_pad_mask:
+		assert args.dev_out.endswith("dev-advanced-output.txt"), \
+			'When using --use_pad_mask, please set dev_out as "<dataset>-dev-advanced-output.txt"'
+		assert args.test_out.endswith("test-advanced-output.txt"), \
+			'When using --use_pad_mask, please set test_out as "<dataset>-test-advanced-output.txt"'
+	else:
+		assert args.dev_out.endswith("dev-prompting-output.txt"), \
+			'For saving prompting results, please set the dev_out argument as "<dataset>-dev-prompting-output.txt"'
+		assert args.test_out.endswith("test-prompting-output.txt"), \
+			'For saving prompting results, please set the test_out argument as "<dataset>-test-prompting-output.txt"'
 
 	with torch.no_grad():
 		# device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
@@ -374,7 +394,8 @@ def test_with_prompting(args):
 				'label_names': label_names,
 				'num_labels': num_labels,
 				'data_dir': '.',
-				'option': args.option}
+				'option': args.option,
+				'use_pad_mask': args.use_pad_mask}
 
 		config = SimpleNamespace(**config)
 
@@ -448,8 +469,14 @@ def get_args():
 						help='prompt: the Llama parameters are frozen; finetune: Llama parameters are updated',
 						choices=('generate', 'prompt', 'finetune', 'lora'), default="generate")
 	parser.add_argument("--use_gpu", action='store_true')
+	parser.add_argument("--use_pad_mask", action='store_true', help="Ignore right-padding tokens in attention (advanced)")
 	parser.add_argument("--generated_sentence_low_temp_out", type=str, default="generated-sentence-temp-0.txt")
 	parser.add_argument("--generated_sentence_high_temp_out", type=str, default="generated-sentence-temp-1.txt")
+	# Decoding controls for generation
+	parser.add_argument("--top_k", type=int, default=0, help="Top-k sampling; 0 disables")
+	parser.add_argument("--top_p", type=float, default=0.0, help="Top-p (nucleus) sampling; 0 disables")
+	parser.add_argument("--beam_size", type=int, default=1, help="Beam size; 1 disables beam search")
+	parser.add_argument("--beam_alpha", type=float, default=0.0, help="Length normalization exponent for beam search")
 	parser.add_argument("--dev_out", type=str, default="cfimdb-dev-prompting-output.txt")
 	parser.add_argument("--test_out", type=str, default="cfimdb-test-prompting-output.txt")
 	parser.add_argument("--lora_rank", type=int, default=4, help="LoRA rank (r)")

@@ -85,7 +85,8 @@ class Attention(nn.Module):
     def compute_query_key_value_scores(self,
                                        query: torch.Tensor,
                                        key: torch.Tensor,
-                                       value: torch.Tensor) -> torch.Tensor:
+                                       value: torch.Tensor,
+                                       attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         '''
         Jointly compute Scaled Dot Product Attention (see Section 3.2.1 in
         https://arxiv.org/abs/1706.03762 for details). The query, key, and
@@ -99,6 +100,9 @@ class Attention(nn.Module):
         # todo
         d_k = query.size(-1)
         scores = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)
+        # attention_mask: (bs, 1, 1, seqlen) with 1 for real tokens, 0 for pads
+        if attention_mask is not None:
+            scores = scores.masked_fill(attention_mask == 0, float('-inf'))
         attn = F.softmax(scores, dim=-1)
         attn = self.attn_dropout(attn)
         output = torch.matmul(attn, value)
@@ -106,7 +110,8 @@ class Attention(nn.Module):
 
     def forward(
         self,
-        x: torch.Tensor
+        x: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
     ):
         '''
         Llama2 uses Grouped-Query Attention. The details of GQA are actually
@@ -139,7 +144,12 @@ class Attention(nn.Module):
         query = query.transpose(1, 2)  # (bs, n_local_heads, seqlen, head_dim)
         key = key.transpose(1, 2)
         value = value.transpose(1, 2)
-        output = self.compute_query_key_value_scores(query, key, value)
+
+        if attention_mask is not None:
+            # broadcast to (bs, 1, 1, seqlen)
+            attention_mask = attention_mask[:, None, None, :]
+
+        output = self.compute_query_key_value_scores(query, key, value, attention_mask=attention_mask)
 
         # restore time as batch dimension and concat heads
         output = output.transpose(1, 2).contiguous().view(batch_size, seqlen, -1)
@@ -189,7 +199,7 @@ class LlamaLayer(nn.Module):
         self.attention_norm = LayerNorm(config.dim, eps=config.layer_norm_eps)
         self.ffn_norm = LayerNorm(config.dim, eps=config.layer_norm_eps)
 
-    def forward(self, x):
+    def forward(self, x, attention_mask: Optional[torch.Tensor] = None):
         '''
         This is the forward pass of the basic transformer building block. This is a
         modernized version of the block shown on the left of Figure 1 on
@@ -208,7 +218,7 @@ class LlamaLayer(nn.Module):
         # 1)
         x_norm1 = self.attention_norm(x)
         # 2)
-        attn_out = self.attention(x_norm1)
+        attn_out = self.attention(x_norm1, attention_mask=attention_mask)
         # 3) 3.1....
         x_res1 = x + attn_out
         # 3) 3.2....
@@ -258,13 +268,13 @@ class Llama(LlamaPreTrainedModel):
         elif isinstance(module, nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
-    def forward(self, tokens: torch.Tensor, targets: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, tokens: torch.Tensor, targets: Optional[torch.Tensor] = None, attention_mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         _batch_size, seqlen = tokens.shape
         h = self.tok_embeddings(tokens)
         h = self.dropout(h)
 
         for layer in self.layers:
-            h = layer(h)
+            h = layer(h, attention_mask=attention_mask)
         h = self.norm(h)
 
         if targets is not None:
@@ -277,7 +287,17 @@ class Llama(LlamaPreTrainedModel):
         return logits, h
 
     @torch.inference_mode()
-    def generate(self, idx, max_new_tokens, temperature=1.0, epsilon=0.05):
+    def generate(
+        self,
+        idx,
+        max_new_tokens,
+        temperature: float = 1.0,
+        epsilon: float = 0.05,
+        top_k: int = 0,
+        top_p: float = 0.0,
+        beam_size: int = 1,
+        beam_alpha: float = 0.0,
+    ):
         """
         Take a conditioning sequence of indices idx (LongTensor of shape (b,t)) and complete
         the sequence max_new_tokens times, feeding the predictions back into the model each time.
@@ -287,6 +307,63 @@ class Llama(LlamaPreTrainedModel):
         Also note this is a super inefficient version of sampling with no key/value cache, 
         but you are free to add any optimizations on top of this.
         """
+        # Helper: top-k filter on logits
+        def apply_top_k(logits: torch.Tensor, k: int) -> torch.Tensor:
+            if k is None or k <= 0:
+                return logits
+            values, _ = torch.topk(logits, k, dim=-1)
+            min_values = values[..., -1, None]
+            return torch.where(logits < min_values, torch.full_like(logits, float('-inf')), logits)
+
+        # Helper: top-p (nucleus) filter on probabilities
+        def apply_top_p(probs: torch.Tensor, p: float) -> torch.Tensor:
+            if p is None or p <= 0.0 or p >= 1.0:
+                return probs
+            sorted_probs, sorted_idx = torch.sort(probs, descending=True, dim=-1)
+            cumsum = torch.cumsum(sorted_probs, dim=-1)
+            # Keep tokens while cumulative prob <= p; always keep the first
+            keep = cumsum <= p
+            keep[..., 0] = True
+            # Zero out the rest
+            sorted_probs = torch.where(keep, sorted_probs, torch.zeros_like(sorted_probs))
+            # Map back to original indices
+            new_probs = torch.zeros_like(probs)
+            new_probs.scatter_(dim=-1, index=sorted_idx, src=sorted_probs)
+            # Renormalize
+            denom = new_probs.sum(dim=-1, keepdim=True).clamp_min(1e-12)
+            return new_probs / denom
+
+        # Beam search path (batch size 1)
+        if beam_size is not None and beam_size > 1:
+            assert idx.size(0) == 1, "Beam search currently supports batch size 1"
+            beams = [(idx, 0.0)]  # list of (seq_tensor, cumulative_log_prob)
+            for step in range(max_new_tokens):
+                candidates = []
+                for seq, score in beams:
+                    idx_cond = seq if seq.size(1) <= self.params.max_seq_len else seq[:, -self.params.max_seq_len:]
+                    logits, _ = self(idx_cond)
+                    logits = logits[:, -1, :]
+                    log_probs = F.log_softmax(logits / max(temperature, 1e-8), dim=-1)
+                    # Expand top tokens for this beam
+                    topv, topi = torch.topk(log_probs, beam_size, dim=-1)
+                    for i in range(beam_size):
+                        next_token = topi[:, i].view(1, 1)
+                        next_seq = torch.cat([seq, next_token], dim=1)
+                        next_len = next_seq.size(1)
+                        new_score = score + topv[0, i].item()
+                        if beam_alpha > 0.0:
+                            norm_score = new_score / (next_len ** beam_alpha)
+                        else:
+                            norm_score = new_score
+                        candidates.append((next_seq, new_score, norm_score))
+                # Select top beams by normalized score
+                candidates.sort(key=lambda x: x[2], reverse=True)
+                beams = [(seq, score) for (seq, score, _) in candidates[:beam_size]]
+            # Return the best beam (highest normalized score)
+            best_seq = max(beams, key=lambda x: x[1] / (x[0].size(1) ** beam_alpha if beam_alpha > 0.0 else 1.0))[0]
+            return best_seq
+
+        # Sampling / greedy path
         for _ in range(max_new_tokens):
             # if the sequence context is growing too long we must crop it at block_size
             idx_cond = idx if idx.size(1) <= self.params.max_seq_len else idx[:, -self.params.max_seq_len:]
@@ -305,15 +382,30 @@ class Llama(LlamaPreTrainedModel):
                 3) Apply the mask to keep only tokens with probability >= epsilon.
                 4) Renormalize the filtered probabilities so they sum to 1.
                 5) Sample from this filtered probability distribution.
+                (Optionally, also apply other sampling methods)
                 '''
-                probs = F.softmax(logits / temperature, dim=-1)
-                mask = probs >= epsilon
-                filtered_probs = probs * mask
-                filtered_probs = filtered_probs / filtered_probs.sum(dim=-1, keepdim=True)
-                idx_next = torch.multinomial(filtered_probs, num_samples=1)
+                logits_scaled = logits / temperature
+                logits_scaled = apply_top_k(logits_scaled, top_k)
+                probs = F.softmax(logits_scaled, dim=-1)
+                if top_p and top_p > 0.0:
+                    probs = apply_top_p(probs, top_p)
+                elif epsilon and epsilon > 0.0:
+                    mask = probs >= epsilon
+                    filtered_probs = probs * mask
+                    sums = filtered_probs.sum(dim=-1, keepdim=True)
+                    need_fallback = sums == 0
+                    if need_fallback.any():
+                        # If no tokens pass the epsilon threshold, keep the argmax token
+                        max_idx = torch.argmax(probs, dim=-1, keepdim=True)
+                        fallback = torch.zeros_like(filtered_probs)
+                        fallback.scatter_(1, max_idx, 1.0)
+                        filtered_probs = torch.where(need_fallback, fallback, filtered_probs)
+                        sums = filtered_probs.sum(dim=-1, keepdim=True)
+                    probs = filtered_probs / sums.clamp_min(1e-12)
+                idx_next = torch.multinomial(probs, num_samples=1)
             # append sampled index to the running sequence and continue
             idx = torch.cat((idx, idx_next), dim=1)
-        
+
         return idx
 
 def load_pretrained(checkpoint):
